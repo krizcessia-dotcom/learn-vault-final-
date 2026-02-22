@@ -1,0 +1,207 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Auth: NextAuth uses Account, Session, User, VerificationToken
+// We extend User with our own fields via custom model
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  emailVerified DateTime?
+  name          String?
+  password      String? // Hashed, for credentials provider
+  image         String?
+  role          String    @default("student") // student | tutor | both
+  motto         String?   // Personal motto for ID card
+  birthday      String?
+  level         String    @default("Beginner") // Beginner | Explorer | etc
+  learningRole  String    @default("Student")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts             Account[]
+  sessions             Session[]
+  wallet               Wallet?
+  notesForSale         Note[]                @relation("NoteSeller")
+  purchasedNotes       NotePurchase[]
+  dailyTaskCompletions DailyTaskCompletion[]
+  tutorProfile         TutorProfile?
+  bookingsAsStudent    Booking[]             @relation("StudentBookings")
+  flashcardSets        FlashcardSet[]
+  pomodoroSessions     PomodoroSession[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+}
+
+model Wallet {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  balance     Int      @default(0) // LV points
+  totalEarned Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+}
+
+model Transaction {
+  id          String   @id @default(cuid())
+  walletId    String
+  type        String // PURCHASE | SALE | REWARD | CASHOUT | PURCHASE_POINTS
+  amount      Int // LV points (negative for debits)
+  description String?
+  metadata    String? // JSON: { noteId, taskId, etc }
+  createdAt   DateTime @default(now())
+
+  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+}
+
+model CashoutRequest {
+  id         String   @id @default(cuid())
+  userId     String
+  lvAmount   Int
+  pesoAmount Float // LV/2 = peso, minus 20% commission
+  status     String   @default("PENDING") // PENDING | APPROVED | REJECTED
+  createdAt  DateTime @default(now())
+}
+
+model Note {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  subject     String?
+  price       Int // LV points
+  fileUrl     String? // Supabase storage URL or path
+  fileType    String? // pdf, docx, etc
+  sellerId    String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  seller    User           @relation("NoteSeller", fields: [sellerId], references: [id], onDelete: Cascade)
+  purchases NotePurchase[]
+}
+
+model NotePurchase {
+  id        String   @id @default(cuid())
+  noteId    String
+  buyerId   String
+  amount    Int
+  createdAt DateTime @default(now())
+
+  note  Note @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  buyer User @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+}
+
+model DailyTask {
+  id          String  @id @default(cuid())
+  slug        String  @unique // daily_checkin, pomodoro_1, study_60, etc
+  label       String
+  reward      Int
+  description String?
+}
+
+model DailyTaskCompletion {
+  id        String   @id @default(cuid())
+  userId    String
+  taskId    String
+  metadata  String? // JSON for task-specific data
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model TutorProfile {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  bio            String?
+  subjects       String? // JSON array: ["Math","Science"]
+  pricePerHour   Int?
+  price4Sessions Int?
+  yearsExp       Int?
+  teachingStyle  String?
+  certifications String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookings Booking[]
+}
+
+model Booking {
+  id          String    @id @default(cuid())
+  tutorId     String
+  studentId   String
+  lvAmount    Int
+  status      String    @default("PENDING")
+  scheduledAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  tutor   TutorProfile @relation(fields: [tutorId], references: [id], onDelete: Cascade)
+  student User         @relation("StudentBookings", fields: [studentId], references: [id], onDelete: Cascade)
+}
+
+model FlashcardSet {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  createdAt DateTime @default(now())
+
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  flashcards Flashcard[]
+}
+
+model Flashcard {
+  id    String @id @default(cuid())
+  setId String
+  front String
+  back  String
+  order Int    @default(0)
+
+  set FlashcardSet @relation(fields: [setId], references: [id], onDelete: Cascade)
+}
+
+model PomodoroSession {
+  id        String   @id @default(cuid())
+  userId    String
+  minutes   Int
+  completed Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
